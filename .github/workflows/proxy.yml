@@ -20,18 +20,28 @@ jobs:
       - name: Create Codespace
         id: create
         run: |
-          # ایجاد codespace و ذخیره‌ی اسم آن (از خروجی استاندارد)
-          OUTPUT=$(gh codespace create \
+          # ایجاد codespace و گرفتن خروجی کامل
+          CREATE_OUTPUT=$(gh codespace create \
             --repo $GITHUB_REPOSITORY \
             --branch main \
             --machine basicLinux32gb 2>&1)
-          echo "$OUTPUT"
-          # استخراج نام codespace (با فرض خروجی: "Created codespace <name>")
-          CODESPACE_NAME=$(echo "$OUTPUT" | grep -oP 'Created codespace \K\S+')
+          echo "$CREATE_OUTPUT"
+
+          # روش اول: آخرین خط خروجی معمولاً نام codespace است
+          CODESPACE_NAME=$(echo "$CREATE_OUTPUT" | tail -1 | tr -d '\r')
+
+          # اگر خالی بود یا شامل فاصله بود (خطای احتمالی)، از gh codespace list کمک بگیر
+          if [ -z "$CODESPACE_NAME" ] || [[ "$CODESPACE_NAME" == *" "* ]]; then
+            echo "تلاش برای دریافت نام codespace از لیست..."
+            CODESPACE_NAME=$(gh codespace list --repo $GITHUB_REPOSITORY --limit 1 2>/dev/null | awk 'NR>1 {print $1}')
+          fi
+
+          # اگر همچنان خالی بود، خطا بده
           if [ -z "$CODESPACE_NAME" ]; then
-            echo "Failed to parse codespace name from output."
+            echo "Failed to get codespace name"
             exit 1
           fi
+
           echo "codespace_name=$CODESPACE_NAME" >> $GITHUB_OUTPUT
           echo "Created codespace: $CODESPACE_NAME"
 
@@ -39,7 +49,6 @@ jobs:
         run: |
           CODESPACE_NAME=${{ steps.create.outputs.codespace_name }}
           for i in {1..30}; do
-            # خروجی gh codespace list: ستون‌های NAME, STATE, REPOSITORY
             STATE=$(gh codespace list --repo $GITHUB_REPOSITORY 2>/dev/null | grep "$CODESPACE_NAME" | awk '{print $2}')
             if [ "$STATE" = "Available" ]; then
               echo "Codespace is ready."
