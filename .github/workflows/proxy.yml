@@ -20,11 +20,18 @@ jobs:
       - name: Create Codespace
         id: create
         run: |
-          CODESPACE_NAME=$(gh codespace create \
+          # ایجاد codespace و ذخیره‌ی اسم آن (از خروجی استاندارد)
+          OUTPUT=$(gh codespace create \
             --repo $GITHUB_REPOSITORY \
             --branch main \
-            --machine basicLinux32gb \
-            --json name -q '.name')
+            --machine basicLinux32gb 2>&1)
+          echo "$OUTPUT"
+          # استخراج نام codespace (با فرض خروجی: "Created codespace <name>")
+          CODESPACE_NAME=$(echo "$OUTPUT" | grep -oP 'Created codespace \K\S+')
+          if [ -z "$CODESPACE_NAME" ]; then
+            echo "Failed to parse codespace name from output."
+            exit 1
+          fi
           echo "codespace_name=$CODESPACE_NAME" >> $GITHUB_OUTPUT
           echo "Created codespace: $CODESPACE_NAME"
 
@@ -32,12 +39,13 @@ jobs:
         run: |
           CODESPACE_NAME=${{ steps.create.outputs.codespace_name }}
           for i in {1..30}; do
-            STATE=$(gh codespace list --repo $GITHUB_REPOSITORY --json name,state -q ".[] | select(.name==\"$CODESPACE_NAME\") | .state")
+            # خروجی gh codespace list: ستون‌های NAME, STATE, REPOSITORY
+            STATE=$(gh codespace list --repo $GITHUB_REPOSITORY 2>/dev/null | grep "$CODESPACE_NAME" | awk '{print $2}')
             if [ "$STATE" = "Available" ]; then
               echo "Codespace is ready."
               break
             fi
-            echo "Waiting... ($STATE)"
+            echo "Waiting... state=$STATE"
             sleep 10
           done
 
