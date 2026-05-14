@@ -2,7 +2,7 @@ name: Permanent Proxy via Codespace
 
 on:
   schedule:
-    - cron: '50 */5 * * *'   # هر ۵ ساعت و ۵۰ دقیقه
+    - cron: '50 */5 * * *'
   workflow_dispatch:
 
 jobs:
@@ -14,8 +14,8 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Authenticate GitHub CLI
-        run: echo "${{ secrets.GH_PAT }}" | gh auth login --with-token
+      - name: Set GH_TOKEN for gh CLI
+        run: echo "GH_TOKEN=${{ secrets.GH_PAT }}" >> $GITHUB_ENV
 
       - name: Create Codespace
         id: create
@@ -57,7 +57,6 @@ jobs:
       - name: Get public URL and keep alive
         run: |
           CODESPACE_NAME=${{ steps.create.outputs.codespace_name }}
-          # فرمول آدرس عمومی
           PROXY_URL="https://${CODESPACE_NAME}-1080.preview.app.github.dev"
           echo "============================================"
           echo "پروکسی HTTP عمومی تو:"
@@ -66,5 +65,4 @@ jobs:
           echo "پورت: 443"
           echo "============================================"
           
-          # زنده نگه داشتن Job (و در نتیجه پروکسی) به مدت ۶ ساعت
           sleep 21600
