@@ -21,24 +21,26 @@ jobs:
       - name: Install dependencies
         run: pip install websockets
 
-      - name: Start proxy and bore tunnel
-        env:
-          BORE_SECRET: "kajeyiran0131"   # رمز ثابت برای آدرس دائمی
+      - name: Start proxy server
         run: |
-          # ۱. اجرای پروکسی HTTP روی پورت ۱۰۸۰
           python http_proxy.py &
-          sleep 2
-
-          # ۲. دانلود و اجرای bore
-          curl -sL https://github.com/ekzhang/bore/releases/download/v0.5.1/bore-v0.5.1-x86_64-unknown-linux-musl.tar.gz | tar xz
-          chmod +x bore
-          ./bore local 1080 --to bore.pub --secret $BORE_SECRET > bore_output.txt 2>&1 &
           sleep 3
+          echo "Proxy server started"
 
-          # ۳. نمایش آدرس پروکسی (فقط بار اول لازمه ببینی، بعداً ذخیره می‌کنی)
-          echo "========== آدرس پروکسی HTTP =========="
-          grep -oP 'listening at \K[^ ]+' bore_output.txt || echo "منتظر دریافت آدرس..."
-          echo "======================================="
+      - name: Expose tunnel
+        id: expose-tunnel
+        uses: codetalkio/expose-tunnel@v1
+        with:
+          service: bore.pub
+          port: 1080
 
-          # ۴. زنده نگه‌داشتن Job به مدت ۶ ساعت
-          sleep 21600
+      - name: Print tunnel URL
+        run: |
+          echo "============================================"
+          echo "پروکسی فعال شد!"
+          echo "آدرس تونل (کپی کن): ${{ steps.expose-tunnel.outputs.tunnel-url }}"
+          echo "از این آدرس به عنوان پروکسی HTTP استفاده کن"
+          echo "============================================"
+
+      - name: Keep alive
+        run: sleep 21600
