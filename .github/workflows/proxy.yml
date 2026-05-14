@@ -3,12 +3,12 @@ name: Always-On Proxy
 on:
   schedule:
     - cron: '50 */5 * * *'   # هر ۵ ساعت و ۵۰ دقیقه
-  workflow_dispatch:          # امکان اجرای دستی
+  workflow_dispatch:
 
 jobs:
   proxy:
     runs-on: ubuntu-latest
-    timeout-minutes: 360      # حداکثر ۶ ساعت
+    timeout-minutes: 360
 
     steps:
       - uses: actions/checkout@v4
@@ -21,24 +21,24 @@ jobs:
       - name: Install dependencies
         run: pip install websockets
 
-      - name: Start proxy and serveo tunnel
+      - name: Start proxy and bore tunnel
         env:
-          SUBDOMAIN: "kajeyiran0131"   # <-- ساب‌دامین ثابت تو
+          BORE_SECRET: "kajeyiran0131"   # رمز ثابت برای آدرس دائمی
         run: |
           # ۱. اجرای پروکسی HTTP روی پورت ۱۰۸۰
           python http_proxy.py &
           sleep 2
 
-          # ۲. ایجاد تونل SSH به serveo.net
-          #    پورت 80 ریموت به 1080 لوکال وصل می‌شود
-          ssh -o StrictHostKeyChecking=no -R ${SUBDOMAIN}:80:localhost:1080 serveo.net &
+          # ۲. دانلود و اجرای bore
+          curl -sL https://github.com/ekzhang/bore/releases/download/v0.5.1/bore-v0.5.1-x86_64-unknown-linux-musl.tar.gz | tar xz
+          chmod +x bore
+          ./bore local 1080 --to bore.pub --secret $BORE_SECRET > bore_output.txt 2>&1 &
+          sleep 3
 
-          sleep 5
-          echo "============================================"
-          echo "پروکسی فعال شد!"
-          echo "آدرس: https://${SUBDOMAIN}.serveo.net"
-          echo "پورت پروکسی HTTP: 443 (یا 80)"
-          echo "============================================"
+          # ۳. نمایش آدرس پروکسی (فقط بار اول لازمه ببینی، بعداً ذخیره می‌کنی)
+          echo "========== آدرس پروکسی HTTP =========="
+          grep -oP 'listening at \K[^ ]+' bore_output.txt || echo "منتظر دریافت آدرس..."
+          echo "======================================="
 
-          # ۳. زنده نگه‌داشتن Job به مدت ۶ ساعت
+          # ۴. زنده نگه‌داشتن Job به مدت ۶ ساعت
           sleep 21600
