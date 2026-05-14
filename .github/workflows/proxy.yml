@@ -1,46 +1,73 @@
-name: Always-On Proxy
+name: Test Codespace Tunnel
 
 on:
-  schedule:
-    - cron: '50 */5 * * *'   # هر ۵ ساعت و ۵۰ دقیقه
   workflow_dispatch:
 
 jobs:
-  proxy:
+  tunnel:
     runs-on: ubuntu-latest
-    timeout-minutes: 360
-
     steps:
-      - uses: actions/checkout@v4
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
-
-      - name: Install dependencies
-        run: pip install websockets
-
-      - name: Start proxy server
+      - name: Create temporary Codespace via API
+        id: codespace
         run: |
-          python http_proxy.py &
-          sleep 3
-          echo "Proxy server started"
+          # ساخت Codespace روی همین مخزن (branch main)
+          RESPONSE=$(curl -s -X POST \
+            -H "Authorization: Bearer ${{ secrets.GH_PAT }}" \
+            -H "Accept: application/vnd.github+json" \
+            https://api.github.com/repos/${{ github.repository }}/codespaces \
+            -d '{"ref":"main","machine":"basicLinux32gb"}')
+          
+          # استخراج نام و ID
+          CODESPACE_NAME=$(echo "$RESPONSE" | jq -r '.name')
+          echo "codespace_name=$CODESPACE_NAME" >> $GITHUB_OUTPUT
+          
+          # صبر کن تا آماده بشه (حداکثر ۲ دقیقه)
+          for i in {1..24}; do
+            STATE=$(curl -s \
+              -H "Authorization: Bearer ${{ secrets.GH_PAT }}" \
+              https://api.github.com/repos/${{ github.repository }}/codespaces/$CODESPACE_NAME \
+              | jq -r '.state')
+            if [ "$STATE" = "Available" ]; then
+              break
+            fi
+            sleep 10
+          done
 
-      - name: Expose tunnel
-        id: expose-tunnel
-        uses: codetalkio/expose-tunnel@v1
-        with:
-          service: bore.pub
-          port: 1080
-
-      - name: Print tunnel URL
+      - name: Start proxy inside Codespace via SSH
         run: |
-          echo "============================================"
-          echo "پروکسی فعال شد!"
-          echo "آدرس تونل (کپی کن): ${{ steps.expose-tunnel.outputs.tunnel-url }}"
-          echo "از این آدرس به عنوان پروکسی HTTP استفاده کن"
-          echo "============================================"
+          # دریافت دستور ssh از API
+          SSH_CMD=$(curl -s \
+            -H "Authorization: Bearer ${{ secrets.GH_PAT }}" \
+            https://api.github.com/repos/${{ github.repository }}/codespaces/${{ steps.codespace.outputs.codespace_name }} \
+            | jq -r '.ssh_command')
+          
+          # اجرای دستورات نصب و اجرای پروکسی
+          eval "$SSH_CMD" << 'EOF'
+            pip install websockets
+            nohup python3 http_proxy.py &
+            sleep 3
+          EOF
 
-      - name: Keep alive
-        run: sleep 21600
+      - name: Forward port 1080 as public
+        run: |
+          CODESPACE_NAME=${{ steps.codespace.outputs.codespace_name }}
+          curl -X PATCH \
+            -H "Authorization: Bearer ${{ secrets.GH_PAT }}" \
+            -H "Accept: application/vnd.github+json" \
+            https://api.github.com/repos/${{ github.repository }}/codespaces/$CODESPACE_NAME/ports/1080 \
+            -d '{"visibility":"public"}'
+
+      - name: Get tunnel URL
+        run: |
+          CODESPACE_NAME=${{ steps.codespace.outputs.codespace_name }}
+          URL=$(curl -s \
+            -H "Authorization: Bearer ${{ secrets.GH_PAT }}" \
+            https://api.github.com/repos/${{ github.repository }}/codespaces/$CODESPACE_NAME \
+            | jq -r '.environment.web_url' | sed 's|https://|https://|')
+          TUNNEL_URL="${URL}1080.preview.app.github.dev"
+          echo "========================================="
+          echo "پروکسی عمومی (تست کن): $TUNNEL_URL"
+          echo "========================================="
+
+      - name: Keep alive for 30 minutes
+        run: sleep 1800
